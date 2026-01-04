@@ -14,6 +14,9 @@ def register(app):
         if channel_id != WELCOME_CHANNEL:
             return
 
+        inviter_id = event.get("inviter")
+        logging.info(f"User <@{user_id}> was added to channel {channel_id} by <@{inviter_id}>")
+
         try:
             current_users = client.usergroups_users_list(usergroup=PING_GROUP)
             user_list = current_users.get("users", [])
@@ -23,10 +26,11 @@ def register(app):
         except Exception as e:
             logging.error(f"Failed to add user to ping group: {e}")
 
+        inviter_mention = f" (added by <@{inviter_id}>)" if inviter_id else ""
         client.chat_postMessage(
             channel=channel_id,
             text=(
-                f"Welcome to Aditya tries to Code <@{user_id}>, <@{NOTIFY_USER}> get in here. "
+                f"Welcome to Aditya tries to Code <@{user_id}>{inviter_mention}, <@{NOTIFY_USER}> get in here. "
                 "Also btw you have been added to the ping group aditya-squad, "
                 "you can leave if you want to (I don't ping often)"
             ),
