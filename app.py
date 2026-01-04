@@ -17,12 +17,13 @@ app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 
 def register_handlers(app: App):
-    from handlers import ai, fun, help, miscellaneous, xkcd
+    from handlers import ai, fun, help, miscellaneous, welcome, xkcd
 
     ai.register(app)
     fun.register(app)
     help.register(app)
     miscellaneous.register(app)
+    welcome.register(app)
     xkcd.register(app)
 
 
