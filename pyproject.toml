@@ -1,0 +1,18 @@
+[project]
+name = "dragon-bot"
+version = "0.1"
+description = "Dragon Bot is a Slack bot designed to help manage workspaces and provide some fun and useful commands."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "arrow>=1.4.0",
+    "pyjokes>=0.8.3",
+    "python-dateutil>=2.9.0.post0",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+    "slack-bolt>=1.18.0",
+    "slack-sdk>=3.27.0",
+]
+
+[tool.ruff]
+lint.extend-select = ["I"]
