@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 COMMANDS = [
     {"name": "/ping", "desc": "Response time"},
     {"name": "/about", "desc": "Bot info"},
@@ -23,6 +27,7 @@ def register(app):
     @app.command("/help")
     def help_command(ack, respond, command):
         ack()
+        logger.info(f"/help used by <@{command['user_id']}>")
 
         left_col = COMMANDS[: len(COMMANDS) // 2 + 1]
         right_col = COMMANDS[len(COMMANDS) // 2 + 1 :]
@@ -42,4 +47,5 @@ def register(app):
             },
         ]
 
+        logger.debug(f"Sending help message with {len(COMMANDS)} commands")
         app.client.chat_postMessage(channel=command["channel_id"], blocks=blocks)

@@ -17,20 +17,32 @@ app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 
 def register_handlers(app: App):
-    from handlers import ai, fun, help, miscellaneous, welcome, xkcd
+    from handlers import ai, channel_request, fun, help, miscellaneous, welcome, xkcd
 
+    logging.info("Registering handlers...")
     ai.register(app)
+    logging.debug("Registered ai handlers")
+    channel_request.register(app)
+    logging.debug("Registered channel_request handlers")
     fun.register(app)
+    logging.debug("Registered fun handlers")
     help.register(app)
+    logging.debug("Registered help handlers")
     miscellaneous.register(app)
+    logging.debug("Registered miscellaneous handlers")
     welcome.register(app)
+    logging.debug("Registered welcome handlers")
     xkcd.register(app)
+    logging.debug("Registered xkcd handlers")
+    logging.info("All handlers registered successfully")
 
 
 register_handlers(app)
 
 
 if __name__ == "__main__":
+    logging.info("Initializing Socket Mode handler...")
     handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
     logging.info("Starting Dragon Bot for Slack...")
+    logging.info("Bot is now running and listening for events")
     handler.start()

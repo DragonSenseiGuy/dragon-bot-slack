@@ -1,4 +1,7 @@
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 GITHUB_URL = "https://github.com/dragonsenseiguy/dragon-bot"
 
@@ -8,7 +11,9 @@ def register(app):
     def ping(ack, respond, command):
         start = time.time()
         ack()
+        logger.info(f"/ping used by <@{command['user_id']}>")
         latency = (time.time() - start) * 1000
+        logger.debug(f"Ping latency: {latency:.2f}ms")
         app.client.chat_postMessage(
             channel=command["channel_id"],
             text=f":table_tennis_paddle_and_ball: Pong! Response time: {latency:.2f}ms",
@@ -17,6 +22,8 @@ def register(app):
     @app.command("/about")
     def about(ack, command):
         ack()
+        logger.info(f"/about used by <@{command['user_id']}>")
+        logger.debug("Sending about message")
         app.client.chat_postMessage(
             channel=command["channel_id"],
             blocks=[
@@ -40,6 +47,8 @@ def register(app):
     @app.command("/credits")
     def credits(ack, command):
         ack()
+        logger.info(f"/credits used by <@{command['user_id']}>")
+        logger.debug("Sending credits message")
         app.client.chat_postMessage(
             channel=command["channel_id"],
             blocks=[

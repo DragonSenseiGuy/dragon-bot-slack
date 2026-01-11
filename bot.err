@@ -1,0 +1,9 @@
+2026-01-11 18:36:03,090 - INFO - Registering handlers...
+2026-01-11 18:36:03,092 - INFO - All handlers registered successfully
+2026-01-11 18:36:03,092 - INFO - Initializing Socket Mode handler...
+2026-01-11 18:36:03,093 - INFO - Starting Dragon Bot for Slack...
+2026-01-11 18:36:03,093 - INFO - Bot is now running and listening for events
+2026-01-11 18:36:03,425 - INFO - A new session has been established (session id: 2728e190-385c-40a1-9904-862339538132)
+2026-01-11 18:36:03,425 - INFO - ⚡️ Bolt app is running!
+2026-01-11 18:36:03,494 - INFO - Starting to receive messages from a new connection (session id: 2728e190-385c-40a1-9904-862339538132)
+2026-01-11 18:36:32,937 - INFO - Trigger word 'hackclub' detected from <@U09H4M0523Z>
