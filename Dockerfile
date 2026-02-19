@@ -15,12 +15,13 @@ ENV UV_NO_DEV=1
 ENV UV_PYTHON_DOWNLOADS=0
 
 WORKDIR /app
-COPY uv.lock pyproject.toml /app/
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project
 COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked
+    if [ -f /app/uv.lock ]; then \
+        uv sync --locked; \
+    else \
+        uv sync; \
+    fi
 
 
 # Then, use a final image without uv
