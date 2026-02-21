@@ -218,3 +218,6 @@ __marimo__/
 # Project Specific
 slack.log
 ai_usage.json
+bot.err
+
+.DS_Store

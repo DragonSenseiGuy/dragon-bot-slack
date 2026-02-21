@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -11,9 +12,58 @@ from dotenv import load_dotenv
 load_dotenv()
 
 AI_API_KEY = os.getenv("AI_API_KEY")
+SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
 URL = "https://ai.hackclub.com/proxy/v1/chat/completions"
 USAGE_FILE = Path(__file__).parent.parent / "resources" / "ai_usage.json"
 DAILY_LIMIT = 20
+
+CHAT_CHANNEL = "C0AE6U84NJC"
+
+CHAT_SYSTEM_PROMPT = (
+    "You are Dragon Bot, a helpful and friendly Slack bot for the Hack Club community. "
+    "Keep your responses concise and conversational. "
+    "Use the web_search tool if you need current information or facts you're unsure about. "
+    "Format your responses using Slack mrkdwn syntax."
+)
+
+SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "web_search",
+        "description": "Search the web for current information when you need up-to-date facts or answers you're unsure about.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+
+def do_web_search(query):
+    """Search using Hack Club Search API."""
+    headers = {"Authorization": f"Bearer {SEARCH_API_KEY}"}
+    resp = requests.get(
+        "https://search.hackclub.com/res/v1/web/search",
+        params={"q": query, "count": 5},
+        headers=headers,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    results = data.get("web", {}).get("results", [])
+    formatted = []
+    for r in results:
+        formatted.append(
+            f"Title: {r.get('title', '')}\n"
+            f"URL: {r.get('url', '')}\n"
+            f"Snippet: {r.get('description', '')}"
+        )
+    return "\n\n".join(formatted) if formatted else "No results found."
 
 PERSONALITY = [
     "discord zoomer",
@@ -209,6 +259,97 @@ def register(app):
                 channel=command["channel_id"],
                 text=f"Failed to communicate with the AI API: {e}",
             )
+
+    @app.event("app_mention")
+    def handle_mention(event, say):
+        channel = event.get("channel")
+        if channel != CHAT_CHANNEL:
+            return
+
+        user_id = event.get("user")
+        text = event.get("text", "")
+        thread_ts = event.get("thread_ts") or event.get("ts")
+
+        user_message = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+        if not user_message:
+            say(text="Hey! What can I help you with?", thread_ts=thread_ts)
+            return
+
+        if not AI_API_KEY:
+            say(text=":x: The AI API key is not configured.", thread_ts=thread_ts)
+            return
+
+        if not check_and_increment_usage():
+            say(
+                text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
+                thread_ts=thread_ts,
+            )
+            return
+
+        logging.info(f"AI mention from <@{user_id}>: {user_message[:50]}...")
+
+        headers = {
+            "Authorization": f"Bearer {AI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        messages = [
+            {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+
+        payload = {
+            "model": "moonshotai/kimi-k2.5",
+            "messages": messages,
+            "stream": False,
+        }
+        if SEARCH_API_KEY:
+            payload["tools"] = [SEARCH_TOOL]
+
+        try:
+            response = requests.post(URL, headers=headers, json=payload)
+            response.raise_for_status()
+            result = response.json()
+
+            choice = result.get("choices", [{}])[0]
+            message = choice.get("message", {})
+
+            if message.get("tool_calls"):
+                tool_call = message["tool_calls"][0]
+                if tool_call["function"]["name"] == "web_search":
+                    args = json.loads(tool_call["function"]["arguments"])
+                    search_query = args.get("query", user_message)
+                    logging.info(f"AI requested web search: {search_query}")
+
+                    search_results = do_web_search(search_query)
+
+                    messages.append(message)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "content": search_results,
+                        }
+                    )
+
+                    payload["messages"] = messages
+                    payload.pop("tools", None)
+
+                    response = requests.post(URL, headers=headers, json=payload)
+                    response.raise_for_status()
+                    result = response.json()
+                    choice = result.get("choices", [{}])[0]
+                    message = choice.get("message", {})
+
+            content = message.get("content", "")
+            if content:
+                logging.info(f"AI chat response sent, length: {len(content)} chars")
+                say(text=content, thread_ts=thread_ts)
+            else:
+                say(text="I couldn't come up with a response.", thread_ts=thread_ts)
+        except Exception as e:
+            logging.error(f"Error in AI chat mention: {e}")
+            say(text=f":x: Something went wrong: {e}", thread_ts=thread_ts)
 
     @app.command("/ask-ai-personality")
     def ask_ai_with_personality(ack, command):
