@@ -1,9 +1,24 @@
 import logging
+import os
 import time
 
 logger = logging.getLogger(__name__)
 
 GITHUB_URL = "https://github.com/dragonsenseiguy/dragon-bot"
+PING_GROUP_ID = os.environ.get("PING_GROUP_ID")
+
+
+def handle_message(event, say, client):
+    """Respond with :thread: when the ping group is mentioned."""
+    if not PING_GROUP_ID:
+        return
+
+    text = event.get("text", "")
+    if event.get("bot_id"):
+        return
+
+    if f"<!subteam^{PING_GROUP_ID}>" in text:
+        say(":thread:")
 
 
 def register(app):

@@ -1,6 +1,6 @@
 import logging
 
-from handlers import ai, fun, leveling
+from handlers import ai, fun, leveling, miscellaneous
 
 logger = logging.getLogger(__name__)
 
@@ -23,3 +23,8 @@ def register(app):
             leveling.handle_message_xp(event, say, client)
         except Exception as e:
             logger.error(f"Error in leveling message handler: {e}")
+
+        try:
+            miscellaneous.handle_message(event, say, client)
+        except Exception as e:
+            logger.error(f"Error in miscellaneous message handler: {e}")
