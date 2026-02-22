@@ -19,6 +19,7 @@ AI_API_KEY = os.getenv("AI_API_KEY")
 SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 CHAT_CHANNEL = os.getenv("CHAT_CHANNEL")
+OWNER_USER_ID = os.getenv("OWNER_USER_ID")
 URL = "https://ai.hackclub.com/proxy/v1/chat/completions"
 DAILY_LIMIT = 20
 
@@ -170,8 +171,11 @@ def _init_db():
         logging.error(f"Failed to initialize database: {e}")
 
 
-def check_and_increment_usage() -> bool:
+def check_and_increment_usage(user_id: str | None = None) -> bool:
     """Check and increment the daily AI usage count using PostgreSQL."""
+    if user_id and user_id == OWNER_USER_ID:
+        return True
+
     if not DATABASE_URL:
         logging.warning("DATABASE_URL not set, skipping usage tracking")
         return True
@@ -260,14 +264,10 @@ def handle_thread_followup(event, say, client, context):
     if not AI_API_KEY:
         return
 
-    if not check_and_increment_usage():
-        say(
-            text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
-            thread_ts=thread_ts,
-        )
-        return
-
     user_id = event.get("user")
+
+    if not check_and_increment_usage(user_id):
+        return
     user_message = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
     if not user_message:
         return
@@ -304,7 +304,7 @@ def register(app):
             )
             return
 
-        if not check_and_increment_usage():
+        if not check_and_increment_usage(command["user_id"]):
             app.client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
@@ -390,7 +390,7 @@ def register(app):
             )
             return
 
-        if not check_and_increment_usage():
+        if not check_and_increment_usage(command["user_id"]):
             app.client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
@@ -464,7 +464,7 @@ def register(app):
             say(text=":x: The AI API key is not configured.", thread_ts=thread_ts)
             return
 
-        if not check_and_increment_usage():
+        if not check_and_increment_usage(user_id):
             say(
                 text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
                 thread_ts=thread_ts,
@@ -541,7 +541,7 @@ def register(app):
                 say(":x: The AI API key is not configured.")
                 return
 
-            if not check_and_increment_usage():
+            if not check_and_increment_usage(context.user_id):
                 say(f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.")
                 return
 
@@ -597,7 +597,7 @@ def register(app):
             )
             return
 
-        if not check_and_increment_usage():
+        if not check_and_increment_usage(command["user_id"]):
             app.client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
