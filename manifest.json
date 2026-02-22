@@ -22,25 +22,21 @@
       {
         "command": "/ping",
         "description": "Check the bot's response time",
-        "usage_hint": "",
         "should_escape": false
       },
       {
         "command": "/about",
         "description": "Learn about Dragon Bot",
-        "usage_hint": "",
         "should_escape": false
       },
       {
         "command": "/credits",
         "description": "View credits and acknowledgements",
-        "usage_hint": "",
         "should_escape": false
       },
       {
         "command": "/help",
         "description": "List all available commands",
-        "usage_hint": "",
         "should_escape": false
       },
       {
@@ -52,7 +48,6 @@
       {
         "command": "/fool",
         "description": "Get a random April Fools' video",
-        "usage_hint": "",
         "should_escape": false
       },
       {
@@ -70,19 +65,16 @@
       {
         "command": "/dadjoke",
         "description": "Get a random dad joke",
-        "usage_hint": "",
         "should_escape": false
       },
       {
         "command": "/dog-picture",
         "description": "Get a random dog picture",
-        "usage_hint": "",
         "should_escape": false
       },
       {
         "command": "/cat-picture",
         "description": "Get a random cat picture",
-        "usage_hint": "",
         "should_escape": false
       },
       {
@@ -94,13 +86,11 @@
       {
         "command": "/xkcd-random",
         "description": "Get a random XKCD comic",
-        "usage_hint": "",
         "should_escape": false
       },
       {
         "command": "/xkcd-latest",
         "description": "Get the latest XKCD comic",
-        "usage_hint": "",
         "should_escape": false
       },
       {
@@ -124,7 +114,6 @@
       {
         "command": "/joinadityaschannel",
         "description": "Request to join Aditya's channel",
-        "usage_hint": "",
         "should_escape": false
       }
     ]
