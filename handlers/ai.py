@@ -9,9 +9,8 @@ from typing import Dict, List
 import psycopg2
 import requests
 from dotenv import load_dotenv
-from slack_bolt import Assistant, BoltContext, Say, SetStatus, SetTitle
+from slack_bolt import Assistant, Say, SetStatus
 from slack_bolt.context.set_suggested_prompts import SetSuggestedPrompts
-from slack_sdk import WebClient
 
 load_dotenv()
 
@@ -239,12 +238,14 @@ def handle_thread_followup(event, say, client, context):
     if channel_type in ("im", "mpim"):
         return
 
+    channel = event.get("channel")
+    if CHAT_CHANNEL and channel != CHAT_CHANNEL:
+        return
+
     text = event.get("text", "")
     bot_user_id = getattr(context, "bot_user_id", None)
     if bot_user_id and f"<@{bot_user_id}>" in text:
         return
-
-    channel = event.get("channel")
 
     try:
         replies = client.conversations_replies(
@@ -295,6 +296,13 @@ def register(app):
     def generate_image(ack, command):
         ack()
         logging.info(f"/generate-image used by <@{command['user_id']}>")
+
+        if CHAT_CHANNEL and command["channel_id"] != CHAT_CHANNEL:
+            app.client.chat_postMessage(
+                channel=command["channel_id"],
+                text=f":x: This command can only be used in <#{CHAT_CHANNEL}>.",
+            )
+            return
 
         if not AI_API_KEY:
             logging.error("AI API key not configured")
@@ -381,6 +389,13 @@ def register(app):
     def ask_ai(ack, command):
         ack()
         logging.info(f"/ask-ai used by <@{command['user_id']}>")
+
+        if CHAT_CHANNEL and command["channel_id"] != CHAT_CHANNEL:
+            app.client.chat_postMessage(
+                channel=command["channel_id"],
+                text=f":x: This command can only be used in <#{CHAT_CHANNEL}>.",
+            )
+            return
 
         if not AI_API_KEY:
             logging.error("AI API key not configured")
@@ -502,86 +517,24 @@ def register(app):
         logger: logging.Logger,
     ):
         try:
-            say("Hey! How can I help you today?")
-            set_suggested_prompts(
-                prompts=[
-                    {
-                        "title": "Search the web",
-                        "message": "Search the web for the latest Hack Club news",
-                    },
-                    {
-                        "title": "Tell me about Hack Club",
-                        "message": "What is Hack Club and what do they do?",
-                    },
-                    {
-                        "title": "Help me code",
-                        "message": "Can you help me get started with Python?",
-                    },
-                ]
-            )
+            if CHAT_CHANNEL:
+                say(f"Hey! I only respond in <#{CHAT_CHANNEL}>. Mention me there to chat!")
+            else:
+                say("Hey! How can I help you today?")
         except Exception as e:
             logger.exception(f"Failed to handle assistant_thread_started: {e}")
             say(f":warning: Something went wrong! ({e})")
 
     @assistant.user_message
     def handle_user_message(
-        client: WebClient,
-        context: BoltContext,
         logger: logging.Logger,
-        payload: dict,
         say: Say,
         set_status: SetStatus,
-        set_title: SetTitle,
+        **kwargs,
     ):
-        try:
-            channel_id = payload["channel"]
-            thread_ts = payload["thread_ts"]
-            user_message = payload["text"]
-
-            if not AI_API_KEY:
-                say(":x: The AI API key is not configured.")
-                return
-
-            if not check_and_increment_usage(context.user_id):
-                say(f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.")
-                return
-
-            set_status(
-                status="thinking...",
-                loading_messages=[
-                    "Searching my brain cells…",
-                    "Consulting the Hack Club oracle…",
-                    "Untangling the internet cables…",
-                ],
-            )
-            set_title(user_message[:50])
-
-            logging.info(f"Assistant message from <@{context.user_id}>: {user_message[:50]}...")
-
-            replies = client.conversations_replies(
-                channel=channel_id,
-                ts=thread_ts,
-                oldest=thread_ts,
-                limit=20,
-            )
-            messages: List[Dict[str, str]] = [
-                {"role": "system", "content": CHAT_SYSTEM_PROMPT},
-            ]
-            for msg in replies["messages"]:
-                role = "user" if msg.get("bot_id") is None else "assistant"
-                messages.append({"role": role, "content": msg.get("text", "")})
-
-            content = call_ai_with_search(messages)
-
-            if content:
-                content = _md_to_slack_mrkdwn(content)
-                logging.info(f"Assistant response sent, length: {len(content)} chars")
-                say(text=content)
-            else:
-                say("I couldn't come up with a response.")
-        except Exception as e:
-            logger.exception(f"Failed to handle assistant user message: {e}")
-            say(f":warning: Something went wrong! ({e})")
+        if CHAT_CHANNEL:
+            say(f":x: I only respond in <#{CHAT_CHANNEL}>. Mention me there to chat!")
+            return
 
     app.use(assistant)
 
@@ -589,6 +542,13 @@ def register(app):
     def ask_ai_with_personality(ack, command):
         ack()
         logging.info(f"/ask-ai-personality used by <@{command['user_id']}>")
+
+        if CHAT_CHANNEL and command["channel_id"] != CHAT_CHANNEL:
+            app.client.chat_postMessage(
+                channel=command["channel_id"],
+                text=f":x: This command can only be used in <#{CHAT_CHANNEL}>.",
+            )
+            return
 
         if not AI_API_KEY:
             logging.error("AI API key not configured")
