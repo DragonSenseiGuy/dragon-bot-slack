@@ -18,6 +18,7 @@ load_dotenv()
 AI_API_KEY = os.getenv("AI_API_KEY")
 SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
+CHAT_CHANNEL = os.getenv("CHAT_CHANNEL")
 URL = "https://ai.hackclub.com/proxy/v1/chat/completions"
 DAILY_LIMIT = 20
 
@@ -446,9 +447,12 @@ def register(app):
 
     @app.event("app_mention")
     def handle_mention(event, say, client):
+        channel = event.get("channel")
+        if CHAT_CHANNEL and channel != CHAT_CHANNEL:
+            return
+
         user_id = event.get("user")
         text = event.get("text", "")
-        channel = event.get("channel")
         thread_ts = event.get("thread_ts") or event.get("ts")
 
         user_message = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
