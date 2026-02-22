@@ -221,6 +221,72 @@ def _build_thread_messages(replies):
     return messages
 
 
+def handle_thread_followup(event, say, client, context):
+    """Respond to thread replies where the bot has already participated."""
+    thread_ts = event.get("thread_ts")
+    if not thread_ts:
+        return
+
+    if event.get("bot_id") or event.get("subtype"):
+        return
+
+    channel_type = event.get("channel_type", "")
+    if channel_type in ("im", "mpim"):
+        return
+
+    text = event.get("text", "")
+    bot_user_id = getattr(context, "bot_user_id", None)
+    if bot_user_id and f"<@{bot_user_id}>" in text:
+        return
+
+    channel = event.get("channel")
+
+    try:
+        replies = client.conversations_replies(
+            channel=channel,
+            ts=thread_ts,
+            limit=20,
+        )
+    except Exception:
+        return
+
+    bot_participated = any(
+        msg.get("bot_id") for msg in replies.get("messages", [])
+    )
+    if not bot_participated:
+        return
+
+    if not AI_API_KEY:
+        return
+
+    if not check_and_increment_usage():
+        say(
+            text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
+            thread_ts=thread_ts,
+        )
+        return
+
+    user_id = event.get("user")
+    user_message = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+    if not user_message:
+        return
+
+    logging.info(f"Thread follow-up from <@{user_id}>: {user_message[:50]}...")
+
+    messages = _build_thread_messages(replies)
+
+    try:
+        content = call_ai_with_search(messages)
+        if content:
+            content = _md_to_slack_mrkdwn(content)
+            say(text=content, thread_ts=thread_ts)
+        else:
+            say(text="I couldn't come up with a response.", thread_ts=thread_ts)
+    except Exception as e:
+        logging.error(f"Error in thread follow-up: {e}")
+        say(text=f":x: Something went wrong: {e}", thread_ts=thread_ts)
+
+
 def register(app):
     _init_db()
 
@@ -420,72 +486,6 @@ def register(app):
                 say(text="I couldn't come up with a response.", thread_ts=thread_ts)
         except Exception as e:
             logging.error(f"Error in AI mention: {e}")
-            say(text=f":x: Something went wrong: {e}", thread_ts=thread_ts)
-
-    @app.event("message")
-    def handle_thread_followup(event, say, client, context):
-        """Respond to thread replies where the bot has already participated."""
-        thread_ts = event.get("thread_ts")
-        if not thread_ts:
-            return
-
-        if event.get("bot_id") or event.get("subtype"):
-            return
-
-        channel_type = event.get("channel_type", "")
-        if channel_type in ("im", "mpim"):
-            return
-
-        text = event.get("text", "")
-        bot_user_id = getattr(context, "bot_user_id", None)
-        if bot_user_id and f"<@{bot_user_id}>" in text:
-            return
-
-        channel = event.get("channel")
-
-        try:
-            replies = client.conversations_replies(
-                channel=channel,
-                ts=thread_ts,
-                limit=20,
-            )
-        except Exception:
-            return
-
-        bot_participated = any(
-            msg.get("bot_id") for msg in replies.get("messages", [])
-        )
-        if not bot_participated:
-            return
-
-        if not AI_API_KEY:
-            return
-
-        if not check_and_increment_usage():
-            say(
-                text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
-                thread_ts=thread_ts,
-            )
-            return
-
-        user_id = event.get("user")
-        user_message = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
-        if not user_message:
-            return
-
-        logging.info(f"Thread follow-up from <@{user_id}>: {user_message[:50]}...")
-
-        messages = _build_thread_messages(replies)
-
-        try:
-            content = call_ai_with_search(messages)
-            if content:
-                content = _md_to_slack_mrkdwn(content)
-                say(text=content, thread_ts=thread_ts)
-            else:
-                say(text="I couldn't come up with a response.", thread_ts=thread_ts)
-        except Exception as e:
-            logging.error(f"Error in thread follow-up: {e}")
             say(text=f":x: Something went wrong: {e}", thread_ts=thread_ts)
 
     assistant = Assistant()

@@ -20,6 +20,10 @@ COMMANDS = [
     {"name": "/ask-ai", "desc": "Ask AI"},
     {"name": "/ask-ai-personality", "desc": "AI + personality"},
     {"name": "/generate-image", "desc": "Generate image"},
+    {"name": "/level", "desc": "Check your XP/level"},
+    {"name": "/leaderboard", "desc": "Top 10 by XP"},
+    {"name": "/request-join", "desc": "Request to join a channel"},
+    {"name": "/join-manager", "desc": "Configure join manager"},
 ]
 
 

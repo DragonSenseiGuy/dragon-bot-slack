@@ -17,7 +17,18 @@ app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 
 def register_handlers(app: App):
-    from handlers import ai, channel_request, fun, help, miscellaneous, welcome, xkcd
+    from handlers import (
+        ai,
+        channel_request,
+        fun,
+        help,
+        join_manager,
+        leveling,
+        message_dispatcher,
+        miscellaneous,
+        welcome,
+        xkcd,
+    )
 
     logging.info("Registering handlers...")
     ai.register(app)
@@ -28,12 +39,18 @@ def register_handlers(app: App):
     logging.debug("Registered fun handlers")
     help.register(app)
     logging.debug("Registered help handlers")
+    join_manager.register(app)
+    logging.debug("Registered join_manager handlers")
+    leveling.register(app)
+    logging.debug("Registered leveling handlers")
     miscellaneous.register(app)
     logging.debug("Registered miscellaneous handlers")
     welcome.register(app)
     logging.debug("Registered welcome handlers")
     xkcd.register(app)
     logging.debug("Registered xkcd handlers")
+    message_dispatcher.register(app)
+    logging.debug("Registered message dispatcher")
     logging.info("All handlers registered successfully")
 
 

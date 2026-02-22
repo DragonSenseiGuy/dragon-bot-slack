@@ -11,6 +11,47 @@ ALL_VIDS = json.loads(Path("resources/fun/april_fools_vids.json").read_text("utf
 
 TRIGGER_WORDS = ["dragon", "hackclub", "dragonsenseiguy"]
 
+EMOJI_MAPPINGS = {
+    "python": "python",
+    "typescript": "x",
+    "javascript": "js",
+}
+
+
+def handle_message(event, say, client):
+    """Handle message events for trigger words, easter eggs, and emoji reactions."""
+    text = event.get("text", "").lower()
+    user_id = event.get("user", "unknown")
+
+    if event.get("bot_id"):
+        return
+
+    logger.debug(f"Message received from <@{user_id}>: {text[:50]}...")
+
+    channel = event.get("channel")
+    ts = event.get("ts")
+    for keyword, emoji in EMOJI_MAPPINGS.items():
+        if keyword in text:
+            try:
+                client.reactions_add(channel=channel, name=emoji, timestamp=ts)
+                logger.debug(f"Added :{emoji}: reaction for keyword '{keyword}'")
+            except Exception as e:
+                logger.error(f"Failed to add reaction :{emoji}:: {e}")
+
+    if "dragonsenseiguy is the best person in the world" in text:
+        logger.info(f"Easter egg triggered by <@{user_id}>")
+        say(
+            "Access granted, You have been promoted to Administrator role. "
+            "You are one of the few people who actually read the source code!"
+        )
+        return
+
+    for word in TRIGGER_WORDS:
+        if word in text:
+            logger.info(f"Trigger word '{word}' detected from <@{user_id}>")
+            say(f"{word} detected")
+            return
+
 
 def register(app):
     @app.command("/joke")
@@ -206,28 +247,4 @@ def register(app):
                 text=":x: Could not retrieve cat picture from API.",
             )
 
-    @app.event("message")
-    def handle_message_events(body, say):
-        event = body.get("event", {})
-        text = event.get("text", "").lower()
-        user_id = event.get("user", "unknown")
 
-        if event.get("bot_id"):
-            logger.debug("Ignoring message from bot")
-            return
-
-        logger.debug(f"Message received from <@{user_id}>: {text[:50]}...")
-
-        if "dragonsenseiguy is the best person in the world" in text:
-            logger.info(f"Easter egg triggered by <@{user_id}>")
-            say(
-                "Access granted, You have been promoted to Administrator role. "
-                "You are one of the few people who actually read the source code!"
-            )
-            return
-
-        for word in TRIGGER_WORDS:
-            if word in text:
-                logger.info(f"Trigger word '{word}' detected from <@{user_id}>")
-                say(f"{word} detected")
-                return
