@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -313,6 +314,46 @@ def register(app):
                 channel=command["channel_id"],
                 text=f"Failed to communicate with the AI API: {e}",
             )
+
+    @app.event("app_mention")
+    def handle_mention(event, say):
+        user_id = event.get("user")
+        text = event.get("text", "")
+        thread_ts = event.get("thread_ts") or event.get("ts")
+
+        user_message = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+        if not user_message:
+            say(text="Hey! What can I help you with?", thread_ts=thread_ts)
+            return
+
+        if not AI_API_KEY:
+            say(text=":x: The AI API key is not configured.", thread_ts=thread_ts)
+            return
+
+        if not check_and_increment_usage():
+            say(
+                text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
+                thread_ts=thread_ts,
+            )
+            return
+
+        logging.info(f"AI mention from <@{user_id}>: {user_message[:50]}...")
+
+        messages = [
+            {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ]
+
+        try:
+            content = call_ai_with_search(messages)
+            if content:
+                logging.info(f"AI mention response sent, length: {len(content)} chars")
+                say(text=content, thread_ts=thread_ts)
+            else:
+                say(text="I couldn't come up with a response.", thread_ts=thread_ts)
+        except Exception as e:
+            logging.error(f"Error in AI mention: {e}")
+            say(text=f":x: Something went wrong: {e}", thread_ts=thread_ts)
 
     assistant = Assistant()
 

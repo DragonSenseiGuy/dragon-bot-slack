@@ -37,6 +37,9 @@ RUN groupadd --system --gid 999 nonroot \
 # Copy the application from the builder
 COPY --from=builder --chown=nonroot:nonroot /app /app
 
+# Ensure the resources directory is writable
+RUN mkdir -p /app/resources && chown -R nonroot:nonroot /app/resources
+
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 

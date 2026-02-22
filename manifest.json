@@ -140,6 +140,7 @@
   "settings": {
     "event_subscriptions": {
       "bot_events": [
+        "app_mention",
         "assistant_thread_started",
         "assistant_thread_context_changed",
         "member_joined_channel",
