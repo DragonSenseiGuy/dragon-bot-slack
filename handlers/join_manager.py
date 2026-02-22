@@ -72,6 +72,13 @@ def register(app):
         ack()
         logger.info(f"/join-manager used by <@{command['user_id']}>")
 
+        if command["user_id"] != OWNER_USER_ID:
+            app.client.chat_postMessage(
+                channel=command["channel_id"],
+                text=":no_entry: Only the bot owner can use this command.",
+            )
+            return
+
         subcommand = command.get("text", "").strip()
         if subcommand != "setup":
             app.client.chat_postMessage(
@@ -112,8 +119,13 @@ def register(app):
                         "type": "input",
                         "block_id": "channel",
                         "element": {
-                            "type": "channels_select",
+                            "type": "conversations_select",
                             "action_id": "channel_input",
+                            "filter": {
+                                "include": ["public", "private"],
+                                "exclude_bot_users": True,
+                                "exclude_external_shared_channels": True,
+                            },
                             "placeholder": {
                                 "type": "plain_text",
                                 "text": "Select channel to manage",
@@ -129,8 +141,13 @@ def register(app):
                         "block_id": "log_channel",
                         "optional": True,
                         "element": {
-                            "type": "channels_select",
+                            "type": "conversations_select",
                             "action_id": "log_channel_input",
+                            "filter": {
+                                "include": ["public", "private"],
+                                "exclude_bot_users": True,
+                                "exclude_external_shared_channels": True,
+                            },
                             "placeholder": {
                                 "type": "plain_text",
                                 "text": "Select log channel",
@@ -175,9 +192,9 @@ def register(app):
         user_id = body["user"]["id"]
         values = view["state"]["values"]
 
-        channel_id = values["channel"]["channel_input"]["selected_channel"]
+        channel_id = values["channel"]["channel_input"]["selected_conversation"]
         log_channel = values["log_channel"]["log_channel_input"].get(
-            "selected_channel"
+            "selected_conversation"
         )
 
         questions = []
