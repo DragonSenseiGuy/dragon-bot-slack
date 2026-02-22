@@ -115,6 +115,28 @@
         "command": "/joinadityaschannel",
         "description": "Request to join Aditya's channel",
         "should_escape": false
+      },
+      {
+        "command": "/level",
+        "description": "Check your XP and level",
+        "should_escape": false
+      },
+      {
+        "command": "/leaderboard",
+        "description": "View the top 10 users by XP",
+        "should_escape": false
+      },
+      {
+        "command": "/request-join",
+        "description": "Request to join a managed channel",
+        "usage_hint": "#channel-name",
+        "should_escape": false
+      },
+      {
+        "command": "/join-manager",
+        "description": "Configure join manager for a channel",
+        "usage_hint": "setup",
+        "should_escape": false
       }
     ]
   },
@@ -132,6 +154,9 @@
         "mpim:history",
         "mpim:read",
         "files:write",
+        "reactions:write",
+        "channels:manage",
+        "groups:write",
         "usergroups:read",
         "usergroups:write"
       ]
