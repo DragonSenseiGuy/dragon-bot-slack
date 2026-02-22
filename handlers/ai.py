@@ -4,13 +4,12 @@ import logging
 import os
 import re
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, List
 
+import psycopg2
 import requests
 from dotenv import load_dotenv
 from slack_bolt import Assistant, BoltContext, Say, SetStatus, SetTitle
-from slack_bolt.context.get_thread_context import GetThreadContext
 from slack_bolt.context.set_suggested_prompts import SetSuggestedPrompts
 from slack_sdk import WebClient
 
@@ -18,8 +17,8 @@ load_dotenv()
 
 AI_API_KEY = os.getenv("AI_API_KEY")
 SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
+DATABASE_URL = os.getenv("DATABASE_URL")
 URL = "https://ai.hackclub.com/proxy/v1/chat/completions"
-USAGE_FILE = Path(__file__).parent.parent / "resources" / "ai_usage.json"
 DAILY_LIMIT = 20
 
 CHAT_SYSTEM_PROMPT = (
@@ -77,7 +76,7 @@ def call_ai_with_search(messages: List[Dict[str, str]]) -> str:
     }
 
     payload = {
-        "model": "moonshotai/kimi-k2.5",
+        "model": "google/gemini-2.5-flash",
         "messages": messages,
         "stream": False,
     }
@@ -128,42 +127,83 @@ PERSONALITY = [
 ]
 
 
-def check_and_increment_usage() -> bool:
-    logging.debug("Checking AI usage limit...")
+def _init_db():
+    """Create the ai_usage table if it doesn't exist."""
+    if not DATABASE_URL:
+        return
     try:
-        with open(USAGE_FILE, "r") as f:
-            data = json.load(f)
-        logging.debug(f"Loaded usage data: {data}")
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logging.warning(f"Could not load usage file, creating new: {e}")
-        data = {"date": "", "count": 0}
-
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    if data["date"] != today:
-        logging.info(f"New day detected, resetting usage count")
-        data["date"] = today
-        data["count"] = 1
-    elif data["count"] >= DAILY_LIMIT:
-        logging.warning(f"Daily limit reached: {data['count']}/{DAILY_LIMIT}")
-        return False
-    else:
-        data["count"] += 1
-        logging.debug(f"Usage count incremented: {data['count']}/{DAILY_LIMIT}")
-
-    try:
-        with open(USAGE_FILE, "w") as f:
-            json.dump(data, f)
-            f.flush()
-            os.fsync(f.fileno())
-        logging.debug("Usage data saved successfully")
+        conn = psycopg2.connect(DATABASE_URL)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS ai_usage (
+                        usage_date DATE PRIMARY KEY,
+                        count INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
+            conn.commit()
+        finally:
+            conn.close()
+        logging.info("Database initialized successfully")
     except Exception as e:
-        logging.error(f"Failed to write to usage file: {e}")
+        logging.error(f"Failed to initialize database: {e}")
 
-    return True
+
+def check_and_increment_usage() -> bool:
+    """Check and increment the daily AI usage count using PostgreSQL."""
+    if not DATABASE_URL:
+        logging.warning("DATABASE_URL not set, skipping usage tracking")
+        return True
+
+    today = datetime.now().date()
+
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT count FROM ai_usage WHERE usage_date = %s",
+                    (today,),
+                )
+                row = cur.fetchone()
+
+                if row and row[0] >= DAILY_LIMIT:
+                    logging.warning(f"Daily limit reached: {row[0]}/{DAILY_LIMIT}")
+                    return False
+
+                cur.execute(
+                    """INSERT INTO ai_usage (usage_date, count) VALUES (%s, 1)
+                       ON CONFLICT (usage_date) DO UPDATE SET count = ai_usage.count + 1""",
+                    (today,),
+                )
+                conn.commit()
+                logging.debug(f"Usage incremented for {today}")
+                return True
+        finally:
+            conn.close()
+    except Exception as e:
+        logging.error(f"Database error in usage tracking: {e}")
+        return True
+
+
+def _build_thread_messages(replies):
+    """Build AI message list from thread replies."""
+    messages = [
+        {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+    ]
+    for msg in replies["messages"]:
+        role = "user" if msg.get("bot_id") is None else "assistant"
+        msg_text = msg.get("text", "")
+        if role == "user":
+            msg_text = re.sub(r"<@[A-Z0-9]+>", "", msg_text).strip()
+        if msg_text:
+            messages.append({"role": role, "content": msg_text})
+    return messages
 
 
 def register(app):
+    _init_db()
+
     @app.command("/generate-image")
     def generate_image(ack, command):
         ack()
@@ -316,9 +356,10 @@ def register(app):
             )
 
     @app.event("app_mention")
-    def handle_mention(event, say):
+    def handle_mention(event, say, client):
         user_id = event.get("user")
         text = event.get("text", "")
+        channel = event.get("channel")
         thread_ts = event.get("thread_ts") or event.get("ts")
 
         user_message = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
@@ -339,10 +380,12 @@ def register(app):
 
         logging.info(f"AI mention from <@{user_id}>: {user_message[:50]}...")
 
-        messages = [
-            {"role": "system", "content": CHAT_SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ]
+        replies = client.conversations_replies(
+            channel=channel,
+            ts=thread_ts,
+            limit=20,
+        )
+        messages = _build_thread_messages(replies)
 
         try:
             content = call_ai_with_search(messages)
@@ -353,6 +396,71 @@ def register(app):
                 say(text="I couldn't come up with a response.", thread_ts=thread_ts)
         except Exception as e:
             logging.error(f"Error in AI mention: {e}")
+            say(text=f":x: Something went wrong: {e}", thread_ts=thread_ts)
+
+    @app.event("message")
+    def handle_thread_followup(event, say, client, context):
+        """Respond to thread replies where the bot has already participated."""
+        thread_ts = event.get("thread_ts")
+        if not thread_ts:
+            return
+
+        if event.get("bot_id") or event.get("subtype"):
+            return
+
+        channel_type = event.get("channel_type", "")
+        if channel_type in ("im", "mpim"):
+            return
+
+        text = event.get("text", "")
+        bot_user_id = getattr(context, "bot_user_id", None)
+        if bot_user_id and f"<@{bot_user_id}>" in text:
+            return
+
+        channel = event.get("channel")
+
+        try:
+            replies = client.conversations_replies(
+                channel=channel,
+                ts=thread_ts,
+                limit=20,
+            )
+        except Exception:
+            return
+
+        bot_participated = any(
+            msg.get("bot_id") for msg in replies.get("messages", [])
+        )
+        if not bot_participated:
+            return
+
+        if not AI_API_KEY:
+            return
+
+        if not check_and_increment_usage():
+            say(
+                text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
+                thread_ts=thread_ts,
+            )
+            return
+
+        user_id = event.get("user")
+        user_message = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+        if not user_message:
+            return
+
+        logging.info(f"Thread follow-up from <@{user_id}>: {user_message[:50]}...")
+
+        messages = _build_thread_messages(replies)
+
+        try:
+            content = call_ai_with_search(messages)
+            if content:
+                say(text=content, thread_ts=thread_ts)
+            else:
+                say(text="I couldn't come up with a response.", thread_ts=thread_ts)
+        except Exception as e:
+            logging.error(f"Error in thread follow-up: {e}")
             say(text=f":x: Something went wrong: {e}", thread_ts=thread_ts)
 
     assistant = Assistant()
