@@ -465,10 +465,11 @@ def register(app):
             return
 
         if not check_and_increment_usage(user_id):
-            say(
-                text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
-                thread_ts=thread_ts,
-            )
+            if not event.get("thread_ts"):
+                say(
+                    text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
+                    thread_ts=thread_ts,
+                )
             return
 
         logging.info(f"AI mention from <@{user_id}>: {user_message[:50]}...")
