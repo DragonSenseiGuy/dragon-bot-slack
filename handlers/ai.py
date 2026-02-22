@@ -25,7 +25,10 @@ CHAT_SYSTEM_PROMPT = (
     "You are Dragon Bot, a helpful and friendly Slack bot for the Hack Club community. "
     "Keep your responses concise and conversational. "
     "Use the web_search tool if you need current information or facts you're unsure about. "
-    "Format your responses using Slack mrkdwn syntax."
+    "Format your responses using Slack mrkdwn syntax: "
+    "*bold*, _italic_, ~strikethrough~, `code`, ```code blocks```, > blockquotes, "
+    "and <url|text> for links. "
+    "NEVER use standard Markdown like **bold**, [text](url), or ### headers."
 )
 
 SEARCH_TOOL = {
@@ -118,6 +121,23 @@ def call_ai_with_search(messages: List[Dict[str, str]]) -> str:
             message = choice.get("message", {})
 
     return message.get("content", "")
+
+
+def _md_to_slack_mrkdwn(text: str) -> str:
+    """Convert standard Markdown artifacts to Slack mrkdwn syntax."""
+    # Convert images ![alt](url) to just the URL (before link conversion)
+    text = re.sub(r"!\[[^\]]*\]\(([^)]+)\)", r"\1", text)
+    # Convert links [text](url) to <url|text>
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"<\2|\1>", text)
+    # Convert headers (## Header) to bold text
+    text = re.sub(r"^#{1,6}\s+(.+)$", r"*\1*", text, flags=re.MULTILINE)
+    # Convert bold **text** or __text__ to *text*
+    text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
+    text = re.sub(r"__(.+?)__", r"*\1*", text)
+    # Convert horizontal rules
+    text = re.sub(r"^---+$", "───", text, flags=re.MULTILINE)
+    return text
+
 
 PERSONALITY = [
     "discord zoomer",
@@ -327,7 +347,10 @@ def register(app):
 
         payload = {
             "model": "google/gemini-2.5-flash",
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
             "stream": False,
         }
 
@@ -339,7 +362,7 @@ def register(app):
             result = response.json()
 
             if result.get("choices") and result["choices"][0]["message"].get("content"):
-                content = result["choices"][0]["message"]["content"]
+                content = _md_to_slack_mrkdwn(result["choices"][0]["message"]["content"])
                 logging.info(f"AI response received, length: {len(content)} chars")
                 app.client.chat_postMessage(channel=command["channel_id"], text=content)
             else:
@@ -390,6 +413,7 @@ def register(app):
         try:
             content = call_ai_with_search(messages)
             if content:
+                content = _md_to_slack_mrkdwn(content)
                 logging.info(f"AI mention response sent, length: {len(content)} chars")
                 say(text=content, thread_ts=thread_ts)
             else:
@@ -456,6 +480,7 @@ def register(app):
         try:
             content = call_ai_with_search(messages)
             if content:
+                content = _md_to_slack_mrkdwn(content)
                 say(text=content, thread_ts=thread_ts)
             else:
                 say(text="I couldn't come up with a response.", thread_ts=thread_ts)
@@ -544,6 +569,7 @@ def register(app):
             content = call_ai_with_search(messages)
 
             if content:
+                content = _md_to_slack_mrkdwn(content)
                 logging.info(f"Assistant response sent, length: {len(content)} chars")
                 say(text=content)
             else:
@@ -597,7 +623,7 @@ def register(app):
         payload = {
             "model": "google/gemini-2.5-flash",
             "messages": [
-                {"role": "system", "content": f"Act like a {selected_personality}"},
+                {"role": "system", "content": f"Act like a {selected_personality}. Format responses using Slack mrkdwn: *bold*, _italic_, ~strikethrough~, `code`, ```code blocks```, > blockquotes, <url|text> for links. NEVER use **bold**, [text](url), or ### headers."},
                 {"role": "user", "content": prompt},
             ],
             "stream": False,
@@ -611,7 +637,7 @@ def register(app):
             result = response.json()
 
             if result.get("choices") and result["choices"][0]["message"].get("content"):
-                content = result["choices"][0]["message"]["content"]
+                content = _md_to_slack_mrkdwn(result["choices"][0]["message"]["content"])
                 logging.info(f"AI response received, length: {len(content)} chars")
                 app.client.chat_postMessage(channel=command["channel_id"], text=content)
             else:
