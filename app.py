@@ -19,7 +19,6 @@ app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 def register_handlers(app: App):
     from handlers import (
         ai,
-        channel_request,
         fun,
         help,
         join_manager,
@@ -33,8 +32,6 @@ def register_handlers(app: App):
     logging.info("Registering handlers...")
     ai.register(app)
     logging.debug("Registered ai handlers")
-    channel_request.register(app)
-    logging.debug("Registered channel_request handlers")
     fun.register(app)
     logging.debug("Registered fun handlers")
     help.register(app)

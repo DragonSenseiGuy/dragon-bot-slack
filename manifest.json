@@ -127,12 +127,6 @@
         "should_escape": false
       },
       {
-        "command": "/request-join",
-        "description": "Request to join a managed channel",
-        "usage_hint": "#channel-name",
-        "should_escape": false
-      },
-      {
         "command": "/join-manager",
         "description": "Configure join manager for a channel",
         "usage_hint": "setup",
