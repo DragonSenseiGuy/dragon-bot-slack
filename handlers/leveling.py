@@ -102,8 +102,9 @@ def register(app):
         logger.info(f"/level used by <@{user_id}>")
 
         if not DATABASE_URL:
-            app.client.chat_postMessage(
+            app.client.chat_postEphemeral(
                 channel=command["channel_id"],
+                user=user_id,
                 text=":x: Database not configured.",
             )
             return
@@ -124,8 +125,9 @@ def register(app):
             next_level = level + 1
             xp_needed = (next_level**2) * 100
 
-            app.client.chat_postMessage(
+            app.client.chat_postEphemeral(
                 channel=command["channel_id"],
+                user=user_id,
                 blocks=[
                     {
                         "type": "section",
@@ -140,11 +142,13 @@ def register(app):
                         },
                     }
                 ],
+                text=f"Level {level} | {xp} XP",
             )
         except Exception as e:
             logger.error(f"Error fetching level: {e}")
-            app.client.chat_postMessage(
+            app.client.chat_postEphemeral(
                 channel=command["channel_id"],
+                user=user_id,
                 text=":x: Could not retrieve level data.",
             )
 
@@ -153,9 +157,12 @@ def register(app):
         ack()
         logger.info(f"/leaderboard used by <@{command['user_id']}>")
 
+        user_id = command["user_id"]
+
         if not DATABASE_URL:
-            app.client.chat_postMessage(
+            app.client.chat_postEphemeral(
                 channel=command["channel_id"],
+                user=user_id,
                 text=":x: Database not configured.",
             )
             return
@@ -172,8 +179,9 @@ def register(app):
                 conn.close()
 
             if not rows:
-                app.client.chat_postMessage(
+                app.client.chat_postEphemeral(
                     channel=command["channel_id"],
+                    user=user_id,
                     text="No leaderboard data yet. Start chatting to earn XP!",
                 )
                 return
@@ -189,8 +197,9 @@ def register(app):
                 prefix = medals[i] if i < 3 else f"`{i + 1}.`"
                 lines.append(f"{prefix} <@{uid}> — Level {level} ({xp} XP)")
 
-            app.client.chat_postMessage(
+            app.client.chat_postEphemeral(
                 channel=command["channel_id"],
+                user=user_id,
                 blocks=[
                     {
                         "type": "header",
@@ -202,10 +211,12 @@ def register(app):
                         "text": {"type": "mrkdwn", "text": "\n".join(lines)},
                     },
                 ],
+                text="XP Leaderboard",
             )
         except Exception as e:
             logger.error(f"Error fetching leaderboard: {e}")
-            app.client.chat_postMessage(
+            app.client.chat_postEphemeral(
                 channel=command["channel_id"],
+                user=user_id,
                 text=":x: Could not retrieve leaderboard data.",
             )
