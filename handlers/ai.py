@@ -2,12 +2,16 @@ import base64
 import json
 import logging
 import os
-import re
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, List
 
 import requests
 from dotenv import load_dotenv
+from slack_bolt import Assistant, BoltContext, Say, SetStatus, SetTitle
+from slack_bolt.context.get_thread_context import GetThreadContext
+from slack_bolt.context.set_suggested_prompts import SetSuggestedPrompts
+from slack_sdk import WebClient
 
 load_dotenv()
 
@@ -16,8 +20,6 @@ SEARCH_API_KEY = os.getenv("SEARCH_API_KEY")
 URL = "https://ai.hackclub.com/proxy/v1/chat/completions"
 USAGE_FILE = Path(__file__).parent.parent / "resources" / "ai_usage.json"
 DAILY_LIMIT = 20
-
-CHAT_CHANNEL = "C0AE6U84NJC"
 
 CHAT_SYSTEM_PROMPT = (
     "You are Dragon Bot, a helpful and friendly Slack bot for the Hack Club community. "
@@ -64,6 +66,58 @@ def do_web_search(query):
             f"Snippet: {r.get('description', '')}"
         )
     return "\n\n".join(formatted) if formatted else "No results found."
+
+
+def call_ai_with_search(messages: List[Dict[str, str]]) -> str:
+    """Call the AI API with optional search tool support. Returns the response text."""
+    headers = {
+        "Authorization": f"Bearer {AI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": "moonshotai/kimi-k2.5",
+        "messages": messages,
+        "stream": False,
+    }
+    if SEARCH_API_KEY:
+        payload["tools"] = [SEARCH_TOOL]
+
+    response = requests.post(URL, headers=headers, json=payload)
+    response.raise_for_status()
+    result = response.json()
+
+    choice = result.get("choices", [{}])[0]
+    message = choice.get("message", {})
+
+    if message.get("tool_calls"):
+        tool_call = message["tool_calls"][0]
+        if tool_call["function"]["name"] == "web_search":
+            args = json.loads(tool_call["function"]["arguments"])
+            search_query = args.get("query", "")
+            logging.info(f"AI requested web search: {search_query}")
+
+            search_results = do_web_search(search_query)
+
+            messages.append(message)
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call["id"],
+                    "content": search_results,
+                }
+            )
+
+            payload["messages"] = messages
+            payload.pop("tools", None)
+
+            response = requests.post(URL, headers=headers, json=payload)
+            response.raise_for_status()
+            result = response.json()
+            choice = result.get("choices", [{}])[0]
+            message = choice.get("message", {})
+
+    return message.get("content", "")
 
 PERSONALITY = [
     "discord zoomer",
@@ -260,96 +314,96 @@ def register(app):
                 text=f"Failed to communicate with the AI API: {e}",
             )
 
-    @app.event("app_mention")
-    def handle_mention(event, say):
-        channel = event.get("channel")
-        if channel != CHAT_CHANNEL:
-            return
+    assistant = Assistant()
 
-        user_id = event.get("user")
-        text = event.get("text", "")
-        thread_ts = event.get("thread_ts") or event.get("ts")
-
-        user_message = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
-        if not user_message:
-            say(text="Hey! What can I help you with?", thread_ts=thread_ts)
-            return
-
-        if not AI_API_KEY:
-            say(text=":x: The AI API key is not configured.", thread_ts=thread_ts)
-            return
-
-        if not check_and_increment_usage():
-            say(
-                text=f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.",
-                thread_ts=thread_ts,
-            )
-            return
-
-        logging.info(f"AI mention from <@{user_id}>: {user_message[:50]}...")
-
-        headers = {
-            "Authorization": f"Bearer {AI_API_KEY}",
-            "Content-Type": "application/json",
-        }
-
-        messages = [
-            {"role": "system", "content": CHAT_SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ]
-
-        payload = {
-            "model": "moonshotai/kimi-k2.5",
-            "messages": messages,
-            "stream": False,
-        }
-        if SEARCH_API_KEY:
-            payload["tools"] = [SEARCH_TOOL]
-
+    @assistant.thread_started
+    def handle_thread_started(
+        say: Say,
+        set_suggested_prompts: SetSuggestedPrompts,
+        logger: logging.Logger,
+    ):
         try:
-            response = requests.post(URL, headers=headers, json=payload)
-            response.raise_for_status()
-            result = response.json()
-
-            choice = result.get("choices", [{}])[0]
-            message = choice.get("message", {})
-
-            if message.get("tool_calls"):
-                tool_call = message["tool_calls"][0]
-                if tool_call["function"]["name"] == "web_search":
-                    args = json.loads(tool_call["function"]["arguments"])
-                    search_query = args.get("query", user_message)
-                    logging.info(f"AI requested web search: {search_query}")
-
-                    search_results = do_web_search(search_query)
-
-                    messages.append(message)
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call["id"],
-                            "content": search_results,
-                        }
-                    )
-
-                    payload["messages"] = messages
-                    payload.pop("tools", None)
-
-                    response = requests.post(URL, headers=headers, json=payload)
-                    response.raise_for_status()
-                    result = response.json()
-                    choice = result.get("choices", [{}])[0]
-                    message = choice.get("message", {})
-
-            content = message.get("content", "")
-            if content:
-                logging.info(f"AI chat response sent, length: {len(content)} chars")
-                say(text=content, thread_ts=thread_ts)
-            else:
-                say(text="I couldn't come up with a response.", thread_ts=thread_ts)
+            say("Hey! How can I help you today?")
+            set_suggested_prompts(
+                prompts=[
+                    {
+                        "title": "Search the web",
+                        "message": "Search the web for the latest Hack Club news",
+                    },
+                    {
+                        "title": "Tell me about Hack Club",
+                        "message": "What is Hack Club and what do they do?",
+                    },
+                    {
+                        "title": "Help me code",
+                        "message": "Can you help me get started with Python?",
+                    },
+                ]
+            )
         except Exception as e:
-            logging.error(f"Error in AI chat mention: {e}")
-            say(text=f":x: Something went wrong: {e}", thread_ts=thread_ts)
+            logger.exception(f"Failed to handle assistant_thread_started: {e}")
+            say(f":warning: Something went wrong! ({e})")
+
+    @assistant.user_message
+    def handle_user_message(
+        client: WebClient,
+        context: BoltContext,
+        logger: logging.Logger,
+        payload: dict,
+        say: Say,
+        set_status: SetStatus,
+        set_title: SetTitle,
+    ):
+        try:
+            channel_id = payload["channel"]
+            thread_ts = payload["thread_ts"]
+            user_message = payload["text"]
+
+            if not AI_API_KEY:
+                say(":x: The AI API key is not configured.")
+                return
+
+            if not check_and_increment_usage():
+                say(f":x: The daily AI command limit of {DAILY_LIMIT} has been reached.")
+                return
+
+            set_status(
+                status="thinking...",
+                loading_messages=[
+                    "Searching my brain cells…",
+                    "Consulting the Hack Club oracle…",
+                    "Untangling the internet cables…",
+                ],
+            )
+            set_title(user_message[:50])
+
+            logging.info(f"Assistant message from <@{context.user_id}>: {user_message[:50]}...")
+
+            replies = client.conversations_replies(
+                channel=channel_id,
+                ts=thread_ts,
+                oldest=thread_ts,
+                limit=20,
+            )
+            messages: List[Dict[str, str]] = [
+                {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+            ]
+            for msg in replies["messages"]:
+                role = "user" if msg.get("bot_id") is None else "assistant"
+                messages.append({"role": role, "content": msg.get("text", "")})
+
+            content = call_ai_with_search(messages)
+
+            if content:
+                logging.info(f"Assistant response sent, length: {len(content)} chars")
+                say(text=content)
+            else:
+                say("I couldn't come up with a response.")
+        except Exception as e:
+            logger.exception(f"Failed to handle assistant user message: {e}")
+            say(f":warning: Something went wrong! ({e})")
+
+    app.use(assistant)
 
     @app.command("/ask-ai-personality")
     def ask_ai_with_personality(ack, command):
