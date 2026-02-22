@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 XP_PER_MESSAGE = 10
-COOLDOWN_SECONDS = 60
+COOLDOWN_SECONDS = 2
 
 _cooldowns: dict[str, float] = {}
 
