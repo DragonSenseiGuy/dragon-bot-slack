@@ -20,7 +20,6 @@ WATCHED_REPOS = [
     "hackclub/pancakes",
     "hackclub/school-toolbox",
     "hackclub/spaces",
-    "hackclub/spaces-backend",
     "hackclub/toolbox",
     "hackclub/webdev",
 ]
