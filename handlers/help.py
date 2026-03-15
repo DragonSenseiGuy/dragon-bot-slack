@@ -23,7 +23,7 @@ COMMANDS = [
     {"name": "/level", "desc": "Check your XP/level"},
     {"name": "/leaderboard", "desc": "Top 10 by XP"},
     {"name": "/joinadityaschannel", "desc": "Request to join a channel"},
-    {"name": "/join-manager", "desc": "Configure join manager"},
+    {"name": "/join-manager", "desc": "Setup/edit join manager"},
 ]
 
 

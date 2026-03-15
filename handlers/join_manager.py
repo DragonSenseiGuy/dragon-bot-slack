@@ -130,34 +130,141 @@ def register(app):
             return
 
         subcommand = command.get("text", "").strip()
-        if subcommand != "setup":
+        if subcommand not in ("setup", "edit"):
             app.client.chat_postMessage(
                 channel=command["channel_id"],
-                text="Usage: `/join-manager setup`",
+                text="Usage: `/join-manager setup` or `/join-manager edit`",
             )
             return
 
+        if subcommand == "edit":
+            configs = _get_all_enabled_configs()
+            if not configs:
+                app.client.chat_postMessage(
+                    channel=command["channel_id"],
+                    text=":x: No join manager configurations exist yet. Use `/join-manager setup` first.",
+                )
+                return
+
+            if len(configs) == 1:
+                ch_id, cfg = configs[0]
+                _open_setup_modal(client, body["trigger_id"], existing_channel=ch_id, existing_config=cfg)
+            else:
+                options = []
+                for ch_id, cfg in configs:
+                    try:
+                        info = client.conversations_info(channel=ch_id)
+                        name = info["channel"]["name"]
+                    except Exception:
+                        name = ch_id
+                    options.append(
+                        {
+                            "text": {"type": "plain_text", "text": f"#{name}"},
+                            "value": ch_id,
+                        }
+                    )
+                client.views_open(
+                    trigger_id=body["trigger_id"],
+                    view={
+                        "type": "modal",
+                        "callback_id": "join_manager_edit_picker",
+                        "title": {"type": "plain_text", "text": "Edit Join Manager"},
+                        "submit": {"type": "plain_text", "text": "Next"},
+                        "close": {"type": "plain_text", "text": "Cancel"},
+                        "blocks": [
+                            {
+                                "type": "input",
+                                "block_id": "edit_channel_pick",
+                                "element": {
+                                    "type": "static_select",
+                                    "action_id": "edit_channel_pick_input",
+                                    "options": options,
+                                },
+                                "label": {
+                                    "type": "plain_text",
+                                    "text": "Select a configuration to edit",
+                                },
+                            },
+                        ],
+                    },
+                )
+            return
+
+        _open_setup_modal(client, body["trigger_id"])
+
+    def _open_setup_modal(client, trigger_id, existing_channel=None, existing_config=None):
+        """Open the join manager setup/edit modal, optionally pre-filled."""
+        existing_questions = (existing_config or {}).get("questions", [])
+        existing_ban_list = (existing_config or {}).get("ban_list", [])
+        existing_log_channel = (existing_config or {}).get("log_channel")
+
         question_blocks = []
         for i in range(1, 6):
+            element = {
+                "type": "plain_text_input",
+                "action_id": f"q{i}_input",
+                "placeholder": {
+                    "type": "plain_text",
+                    "text": f"Enter question {i}",
+                },
+            }
+            if i <= len(existing_questions):
+                element["initial_value"] = existing_questions[i - 1]
             question_blocks.append(
                 {
                     "type": "input",
                     "block_id": f"q{i}",
                     "optional": i > 1,
-                    "element": {
-                        "type": "plain_text_input",
-                        "action_id": f"q{i}_input",
-                        "placeholder": {
-                            "type": "plain_text",
-                            "text": f"Enter question {i}",
-                        },
-                    },
+                    "element": element,
                     "label": {"type": "plain_text", "text": f"Question {i}"},
                 }
             )
 
+        channel_element = {
+            "type": "conversations_select",
+            "action_id": "channel_input",
+            "filter": {
+                "include": ["public", "private"],
+                "exclude_bot_users": True,
+                "exclude_external_shared_channels": True,
+            },
+            "placeholder": {
+                "type": "plain_text",
+                "text": "Select channel to manage",
+            },
+        }
+        if existing_channel:
+            channel_element["initial_conversation"] = existing_channel
+
+        log_channel_element = {
+            "type": "conversations_select",
+            "action_id": "log_channel_input",
+            "filter": {
+                "include": ["public", "private"],
+                "exclude_bot_users": True,
+                "exclude_external_shared_channels": True,
+            },
+            "placeholder": {
+                "type": "plain_text",
+                "text": "Select log channel",
+            },
+        }
+        if existing_log_channel:
+            log_channel_element["initial_conversation"] = existing_log_channel
+
+        ban_list_element = {
+            "type": "plain_text_input",
+            "action_id": "ban_list_input",
+            "placeholder": {
+                "type": "plain_text",
+                "text": "Comma-separated user IDs (e.g., U123,U456)",
+            },
+        }
+        if existing_ban_list:
+            ban_list_element["initial_value"] = ",".join(existing_ban_list)
+
         client.views_open(
-            trigger_id=body["trigger_id"],
+            trigger_id=trigger_id,
             view={
                 "type": "modal",
                 "callback_id": "join_manager_setup_modal",
@@ -168,19 +275,7 @@ def register(app):
                     {
                         "type": "input",
                         "block_id": "channel",
-                        "element": {
-                            "type": "conversations_select",
-                            "action_id": "channel_input",
-                            "filter": {
-                                "include": ["public", "private"],
-                                "exclude_bot_users": True,
-                                "exclude_external_shared_channels": True,
-                            },
-                            "placeholder": {
-                                "type": "plain_text",
-                                "text": "Select channel to manage",
-                            },
-                        },
+                        "element": channel_element,
                         "label": {
                             "type": "plain_text",
                             "text": "Channel to manage",
@@ -190,19 +285,7 @@ def register(app):
                         "type": "input",
                         "block_id": "log_channel",
                         "optional": True,
-                        "element": {
-                            "type": "conversations_select",
-                            "action_id": "log_channel_input",
-                            "filter": {
-                                "include": ["public", "private"],
-                                "exclude_bot_users": True,
-                                "exclude_external_shared_channels": True,
-                            },
-                            "placeholder": {
-                                "type": "plain_text",
-                                "text": "Select log channel",
-                            },
-                        },
+                        "element": log_channel_element,
                         "label": {
                             "type": "plain_text",
                             "text": "Log channel (optional)",
@@ -222,19 +305,30 @@ def register(app):
                         "type": "input",
                         "block_id": "ban_list",
                         "optional": True,
-                        "element": {
-                            "type": "plain_text_input",
-                            "action_id": "ban_list_input",
-                            "placeholder": {
-                                "type": "plain_text",
-                                "text": "Comma-separated user IDs (e.g., U123,U456)",
-                            },
-                        },
+                        "element": ban_list_element,
                         "label": {"type": "plain_text", "text": "Banned users"},
                     },
                 ],
             },
         )
+
+    @app.view("join_manager_edit_picker")
+    def handle_edit_picker(ack, view, body, client):
+        """Handle edit picker → open the setup modal pre-filled with existing config."""
+        values = view["state"]["values"]
+        channel_id = values["edit_channel_pick"]["edit_channel_pick_input"][
+            "selected_option"
+        ]["value"]
+        config = _get_config(channel_id)
+        if not config:
+            ack()
+            client.chat_postMessage(
+                channel=body["user"]["id"],
+                text=":x: Could not load configuration for that channel.",
+            )
+            return
+        ack(response_action="clear")
+        _open_setup_modal(client, body["trigger_id"], existing_channel=channel_id, existing_config=config)
 
     @app.view("join_manager_setup_modal")
     def handle_setup_submission(ack, view, body, client):
