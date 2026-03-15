@@ -49,7 +49,8 @@ def handle_message(event, say, client):
     for word in TRIGGER_WORDS:
         if word in text:
             logger.info(f"Trigger word '{word}' detected from <@{user_id}>")
-            say(f"{word} detected")
+            thread_ts = event.get("thread_ts", ts)
+            say(f"{word} detected", thread_ts=thread_ts)
             return
 
 
