@@ -146,48 +146,8 @@ def register(app):
                 )
                 return
 
-            if len(configs) == 1:
-                ch_id, cfg = configs[0]
-                _open_setup_modal(client, body["trigger_id"], existing_channel=ch_id, existing_config=cfg)
-            else:
-                options = []
-                for ch_id, cfg in configs:
-                    try:
-                        info = client.conversations_info(channel=ch_id)
-                        name = info["channel"]["name"]
-                    except Exception:
-                        name = ch_id
-                    options.append(
-                        {
-                            "text": {"type": "plain_text", "text": f"#{name}"},
-                            "value": ch_id,
-                        }
-                    )
-                client.views_open(
-                    trigger_id=body["trigger_id"],
-                    view={
-                        "type": "modal",
-                        "callback_id": "join_manager_edit_picker",
-                        "title": {"type": "plain_text", "text": "Edit Join Manager"},
-                        "submit": {"type": "plain_text", "text": "Next"},
-                        "close": {"type": "plain_text", "text": "Cancel"},
-                        "blocks": [
-                            {
-                                "type": "input",
-                                "block_id": "edit_channel_pick",
-                                "element": {
-                                    "type": "static_select",
-                                    "action_id": "edit_channel_pick_input",
-                                    "options": options,
-                                },
-                                "label": {
-                                    "type": "plain_text",
-                                    "text": "Select a configuration to edit",
-                                },
-                            },
-                        ],
-                    },
-                )
+            ch_id, cfg = configs[0]
+            _open_setup_modal(client, body["trigger_id"], existing_channel=ch_id, existing_config=cfg)
             return
 
         _open_setup_modal(client, body["trigger_id"])
@@ -312,24 +272,6 @@ def register(app):
             },
         )
 
-    @app.view("join_manager_edit_picker")
-    def handle_edit_picker(ack, view, body, client):
-        """Handle edit picker → open the setup modal pre-filled with existing config."""
-        values = view["state"]["values"]
-        channel_id = values["edit_channel_pick"]["edit_channel_pick_input"][
-            "selected_option"
-        ]["value"]
-        config = _get_config(channel_id)
-        if not config:
-            ack()
-            client.chat_postMessage(
-                channel=body["user"]["id"],
-                text=":x: Could not load configuration for that channel.",
-            )
-            return
-        ack(response_action="clear")
-        _open_setup_modal(client, body["trigger_id"], existing_channel=channel_id, existing_config=config)
-
     @app.view("join_manager_setup_modal")
     def handle_setup_submission(ack, view, body, client):
         ack()
@@ -358,15 +300,11 @@ def register(app):
             conn = psycopg2.connect(DATABASE_URL)
             try:
                 with conn.cursor() as cur:
+                    cur.execute("DELETE FROM join_manager_config")
                     cur.execute(
                         """INSERT INTO join_manager_config
                                (channel_id, enabled, log_channel, questions, ban_list)
-                           VALUES (%s, TRUE, %s, %s, %s)
-                           ON CONFLICT (channel_id) DO UPDATE SET
-                               enabled = TRUE,
-                               log_channel = EXCLUDED.log_channel,
-                               questions = EXCLUDED.questions,
-                               ban_list = EXCLUDED.ban_list""",
+                           VALUES (%s, TRUE, %s, %s, %s)""",
                         (
                             channel_id,
                             log_channel,
@@ -409,128 +347,30 @@ def register(app):
             )
             return
 
-        # Filter out channels where user is banned
-        available = [
-            (ch_id, cfg)
-            for ch_id, cfg in configs
-            if user_id not in cfg["ban_list"]
-        ]
+        ch_id, cfg = configs[0]
 
-        if not available:
+        if user_id in cfg["ban_list"]:
             app.client.chat_postMessage(
                 channel=command["channel_id"],
                 text=":no_entry: You are not allowed to request access.",
             )
             return
 
-        if len(available) == 1:
-            ch_id, cfg = available[0]
-            questions = cfg["questions"]
-            if not questions:
-                app.client.chat_postMessage(
-                    channel=command["channel_id"],
-                    text=":x: No questions configured for this channel.",
-                )
-                return
-
-            client.views_open(
-                trigger_id=body["trigger_id"],
-                view={
-                    "type": "modal",
-                    "callback_id": "join_request_modal",
-                    "private_metadata": json.dumps(
-                        {"channel_id": ch_id, "questions": questions}
-                    ),
-                    "title": {"type": "plain_text", "text": "Join Request"},
-                    "submit": {"type": "plain_text", "text": "Submit"},
-                    "close": {"type": "plain_text", "text": "Cancel"},
-                    "blocks": [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": f"Requesting to join <#{ch_id}>. Please answer the following:",
-                            },
-                        },
-                        {"type": "divider"},
-                        *_build_question_blocks(questions),
-                    ],
-                },
-            )
-        else:
-            # Multiple channels available — show a picker
-            options = []
-            for ch_id, cfg in available:
-                try:
-                    info = client.conversations_info(channel=ch_id)
-                    name = info["channel"]["name"]
-                except Exception:
-                    name = ch_id
-                options.append(
-                    {
-                        "text": {"type": "plain_text", "text": f"#{name}"},
-                        "value": ch_id,
-                    }
-                )
-
-            client.views_open(
-                trigger_id=body["trigger_id"],
-                view={
-                    "type": "modal",
-                    "callback_id": "join_channel_picker_modal",
-                    "title": {"type": "plain_text", "text": "Join Request"},
-                    "submit": {"type": "plain_text", "text": "Next"},
-                    "close": {"type": "plain_text", "text": "Cancel"},
-                    "blocks": [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": "Which channel would you like to join?",
-                            },
-                        },
-                        {
-                            "type": "input",
-                            "block_id": "channel_pick",
-                            "element": {
-                                "type": "static_select",
-                                "action_id": "channel_pick_input",
-                                "options": options,
-                            },
-                            "label": {
-                                "type": "plain_text",
-                                "text": "Select a channel",
-                            },
-                        },
-                    ],
-                },
-            )
-
-    @app.view("join_channel_picker_modal")
-    def handle_channel_pick(ack, view, body, client):
-        """Handle channel picker → replace modal with the questionnaire."""
-        values = view["state"]["values"]
-        channel_id = values["channel_pick"]["channel_pick_input"][
-            "selected_option"
-        ]["value"]
-        config = _get_config(channel_id)
-
-        if not config or not config["questions"]:
-            ack()
-            client.chat_postMessage(
-                channel=body["user"]["id"],
+        questions = cfg["questions"]
+        if not questions:
+            app.client.chat_postMessage(
+                channel=command["channel_id"],
                 text=":x: No questions configured for this channel.",
             )
             return
 
-        questions = config["questions"]
-        ack(
-            response_action="update",
+        client.views_open(
+            trigger_id=body["trigger_id"],
             view={
                 "type": "modal",
                 "callback_id": "join_request_modal",
                 "private_metadata": json.dumps(
-                    {"channel_id": channel_id, "questions": questions}
+                    {"channel_id": ch_id, "questions": questions}
                 ),
                 "title": {"type": "plain_text", "text": "Join Request"},
                 "submit": {"type": "plain_text", "text": "Submit"},
@@ -540,7 +380,7 @@ def register(app):
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"Requesting to join <#{channel_id}>. Please answer the following:",
+                            "text": "Please answer the following to request access:",
                         },
                     },
                     {"type": "divider"},
@@ -645,7 +485,7 @@ def register(app):
             client.conversations_invite(channel=channel_id, users=user_id)
             client.chat_postMessage(
                 channel=user_id,
-                text=f":white_check_mark: Your request to join <#{channel_id}> has been approved!",
+                text=":white_check_mark: Your join request has been approved!",
             )
 
             client.chat_update(
@@ -675,7 +515,7 @@ def register(app):
 
         client.chat_postMessage(
             channel=user_id,
-            text=f":no_entry: Your request to join <#{channel_id}> has been denied.",
+            text=":no_entry: Your join request has been denied.",
         )
 
         client.chat_update(
