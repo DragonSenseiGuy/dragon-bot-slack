@@ -483,23 +483,33 @@ def register(app):
 
         try:
             client.conversations_invite(channel=channel_id, users=user_id)
-            client.chat_postMessage(
-                channel=user_id,
-                text=":white_check_mark: Your join request has been approved!",
-            )
-
-            client.chat_update(
-                channel=body["channel"]["id"],
-                ts=body["message"]["ts"],
-                text=f":white_check_mark: Approved — <@{user_id}> was invited to <#{channel_id}> by <@{approver_id}>.",
-                blocks=[],
-            )
         except Exception as e:
+            if "already_in_channel" in str(e):
+                logger.info(f"User <@{user_id}> already in <#{channel_id}>")
+                client.chat_update(
+                    channel=body["channel"]["id"],
+                    ts=body["message"]["ts"],
+                    text=f":information_source: <@{user_id}> is already in <#{channel_id}>.",
+                    blocks=[],
+                )
+                return
             logger.error(f"Error approving join request: {e}")
             client.chat_postMessage(
                 channel=approver_id,
                 text=f":x: Failed to invite <@{user_id}> to <#{channel_id}>: {e}",
             )
+            return
+
+        client.chat_postMessage(
+            channel=user_id,
+            text=":white_check_mark: Your join request has been approved!",
+        )
+        client.chat_update(
+            channel=body["channel"]["id"],
+            ts=body["message"]["ts"],
+            text=f":white_check_mark: Approved — <@{user_id}> was invited to <#{channel_id}> by <@{approver_id}>.",
+            blocks=[],
+        )
 
     @app.action("join_request_deny")
     def handle_deny(ack, body, client):
