@@ -1,6 +1,7 @@
 import json
 import logging
 import random
+import re
 from pathlib import Path
 
 import requests
@@ -10,6 +11,9 @@ logger = logging.getLogger(__name__)
 ALL_VIDS = json.loads(Path("resources/fun/april_fools_vids.json").read_text("utf-8"))
 
 TRIGGER_WORDS = ["dragon", "hackclub", "dragonsenseiguy"]
+
+# Pattern to match hackclub.slack.com URLs (including Slack's formatted URLs)
+HACKCLUB_SLACK_URL_PATTERN = re.compile(r"<?https?://hackclub\.slack\.com[^\s>]*>?")
 
 EMOJI_MAPPINGS = {
     "python": "python",
@@ -48,6 +52,12 @@ def handle_message(event, say, client):
 
     for word in TRIGGER_WORDS:
         if word in text:
+            # For "hackclub", skip if it only appears in hackclub.slack.com URLs
+            if word == "hackclub":
+                text_without_slack_urls = HACKCLUB_SLACK_URL_PATTERN.sub("", text)
+                if "hackclub" not in text_without_slack_urls:
+                    logger.debug(f"Skipping 'hackclub' trigger - only found in hackclub.slack.com URL")
+                    continue
             logger.info(f"Trigger word '{word}' detected from <@{user_id}>")
             thread_ts = event.get("thread_ts", ts)
             say(f"{word} detected", thread_ts=thread_ts)
@@ -102,7 +112,7 @@ def register(app):
             logger.debug(f"Quote API response status: {resp.status_code}")
             data = resp.json()
             logger.info(f"Quote fetched from author: {data[0]['a']}")
-            quote_text = f">{data[0]['q']}\n>— _{data[0]['a']}_\n\n_Powered by zenquotes.io_"
+            quote_text = f">{data[0]['q']}\n>\u2014 _{data[0]['a']}_\n\n_Powered by zenquotes.io_"
             app.client.chat_postMessage(
                 channel=command["channel_id"],
                 blocks=[
@@ -247,5 +257,3 @@ def register(app):
                 channel=command["channel_id"],
                 text=":x: Could not retrieve cat picture from API.",
             )
-
-
