@@ -1,7 +1,9 @@
 import json
 import logging
 import random
+import threading
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -10,6 +12,28 @@ logger = logging.getLogger(__name__)
 ALL_VIDS = json.loads(Path("resources/fun/april_fools_vids.json").read_text("utf-8"))
 
 TRIGGER_WORDS = ["dragon", "hackclub", "dragonsenseiguy"]
+
+_workspace_hostname = None
+_workspace_hostname_lock = threading.Lock()
+
+
+def _get_workspace_hostname(client):
+    global _workspace_hostname
+    with _workspace_hostname_lock:
+        if _workspace_hostname is None:
+            try:
+                response = client.auth_test()
+                url = response.get("url", "")
+                if url:
+                    _workspace_hostname = urlparse(url).hostname or ""
+                else:
+                    logger.warning("auth_test response missing 'url' field; workspace hostname unknown")
+                    _workspace_hostname = ""
+            except Exception as e:
+                logger.error(f"Failed to get workspace URL: {e}")
+                _workspace_hostname = ""
+    return _workspace_hostname
+
 
 EMOJI_MAPPINGS = {
     "python": "python",
@@ -49,6 +73,9 @@ def handle_message(event, say, client):
     for word in TRIGGER_WORDS:
         if word in text:
             logger.info(f"Trigger word '{word}' detected from <@{user_id}>")
+            if word == "hackclub" and _get_workspace_hostname(client) == "hackclub.slack.com":
+                logger.debug("Skipping 'hackclub detected' message on hackclub.slack.com")
+                return
             thread_ts = event.get("thread_ts", ts)
             say(f"{word} detected", thread_ts=thread_ts)
             return
