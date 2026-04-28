@@ -32,7 +32,7 @@ _initialized = False
 def _get_headers():
     headers = {"Accept": "application/vnd.github+json"}
     if GITHUB_TOKEN:
-        headers["Authorization"] = f"token {GITHUB_TOKEN}"
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
     return headers
 
 
@@ -51,7 +51,7 @@ def _seed_seen_prs():
                 for pr in resp.json():
                     _seen_prs.add(pr["id"])
             else:
-                logger.warning(f"Failed to seed PRs for {repo}: {resp.status_code} {resp.text[:200]}")
+                logger.warning(f"Failed to seed PRs for {repo}: {resp.status_code}")
         except Exception:
             logger.exception(f"Error seeding PRs for {repo}")
     _initialized = True
