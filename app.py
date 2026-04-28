@@ -20,7 +20,6 @@ def register_handlers(app: App):
     from handlers import (
         ai,
         fun,
-        github_webhooks,
         help,
         join_manager,
         leveling,
@@ -33,8 +32,6 @@ def register_handlers(app: App):
     logging.info("Registering handlers...")
     ai.register(app)
     logging.debug("Registered ai handlers")
-    github_webhooks.register(app)
-    logging.debug("Registered github_webhooks handlers")
     fun.register(app)
     logging.debug("Registered fun handlers")
     help.register(app)
