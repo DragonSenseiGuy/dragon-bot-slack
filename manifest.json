@@ -112,8 +112,8 @@
         "should_escape": false
       },
       {
-        "command": "/joinadityaschannel",
-        "description": "Request to join Aditya's channel",
+        "command": "/joindsgschannel",
+        "description": "Request to join DSG's channel",
         "should_escape": false
       },
       {

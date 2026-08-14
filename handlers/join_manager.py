@@ -333,11 +333,11 @@ def register(app):
                 text=":x: Failed to save join manager configuration.",
             )
 
-    @app.command("/joinadityaschannel")
+    @app.command("/joindsgschannel")
     def request_join(ack, body, client, command):
         ack()
         user_id = command["user_id"]
-        logger.info(f"/joinadityaschannel used by <@{user_id}>")
+        logger.info(f"/joindsgschannel used by <@{user_id}>")
 
         configs = _get_all_enabled_configs()
         if not configs:

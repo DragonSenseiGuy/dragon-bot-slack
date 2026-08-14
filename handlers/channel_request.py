@@ -7,7 +7,7 @@ OWNER_USER_ID = os.environ.get("OWNER_USER_ID")
 
 
 def register(app):
-    @app.command("/joinadityaschannel")
+    @app.command("/joindsgschannel")
     def open_request_modal(ack, body, client):
         ack()
         logger.info(f"/request-channel used by <@{body['user_id']}>")
