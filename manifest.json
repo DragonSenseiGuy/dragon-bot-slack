@@ -164,6 +164,7 @@
         "assistant_thread_started",
         "assistant_thread_context_changed",
         "member_joined_channel",
+        "member_left_channel",
         "message.channels",
         "message.groups",
         "message.im",
