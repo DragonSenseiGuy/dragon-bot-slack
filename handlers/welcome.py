@@ -14,17 +14,32 @@ PING_GROUP = "S0A3L9DHB8F"
 logger = logging.getLogger(__name__)
 
 
-def _resolve_log_channel():
-    """Find where join requests get sent, and use that for leave notices too."""
-    config = _get_config(WELCOME_CHANNEL) if WELCOME_CHANNEL else None
-    log_channel = config.get("log_channel") if config else None
+def _leave_config(channel_id):
+    """Resolve leave settings for a channel, or None if it isn't watched.
 
-    if not log_channel:
-        configs = _get_all_enabled_configs()
-        if configs:
-            log_channel = configs[0][1].get("log_channel")
+    The join-manager config owns this. When no config exists we fall back to
+    WELCOME_CHANNEL with both behaviours on, matching the pre-config default.
+    """
+    config = _get_config(channel_id)
+    if config and config.get("enabled"):
+        return {
+            "log_channel": config.get("log_channel") or OWNER_USER_ID,
+            "notify_on_leave": config.get("notify_on_leave", True),
+            "remove_from_group_on_leave": config.get(
+                "remove_from_group_on_leave", True
+            ),
+        }
 
-    return log_channel or OWNER_USER_ID
+    if config or channel_id != WELCOME_CHANNEL:
+        return None
+
+    configs = _get_all_enabled_configs()
+    log_channel = configs[0][1].get("log_channel") if configs else None
+    return {
+        "log_channel": log_channel or OWNER_USER_ID,
+        "notify_on_leave": True,
+        "remove_from_group_on_leave": True,
+    }
 
 
 def register(app):
@@ -97,33 +112,41 @@ def register(app):
         channel_id = event.get("channel")
         user_id = event.get("user")
 
-        if channel_id != WELCOME_CHANNEL:
+        config = _leave_config(channel_id)
+        if not config:
             logger.debug(f"Ignoring member_left_channel for channel {channel_id}")
             return
 
-        logger.info(f"User <@{user_id}> left welcome channel")
+        logger.info(f"User <@{user_id}> left <#{channel_id}>")
 
-        removed = None  # None = unknown (API failed)
-        try:
-            current_users = client.usergroups_users_list(usergroup=PING_GROUP)
-            user_list = current_users.get("users", [])
-            if user_id in user_list:
-                user_list.remove(user_id)
-                client.usergroups_users_update(usergroup=PING_GROUP, users=user_list)
-                removed = True
-                logger.info(f"Removed <@{user_id}> from ping group {PING_GROUP}")
-            else:
-                removed = False
-                logger.debug(f"<@{user_id}> was not in ping group")
-        except Exception as e:
-            logger.error(f"Failed to remove user from ping group: {e}")
+        removed = None  # None = not attempted, or the lookup failed
+        if config["remove_from_group_on_leave"]:
+            try:
+                current_users = client.usergroups_users_list(usergroup=PING_GROUP)
+                user_list = current_users.get("users", [])
+                if user_id in user_list:
+                    user_list.remove(user_id)
+                    client.usergroups_users_update(usergroup=PING_GROUP, users=user_list)
+                    removed = True
+                    logger.info(f"Removed <@{user_id}> from ping group {PING_GROUP}")
+                else:
+                    removed = False
+                    logger.debug(f"<@{user_id}> was not in ping group")
+            except Exception as e:
+                logger.error(f"Failed to remove user from ping group: {e}")
 
-        log_channel = _resolve_log_channel()
+        if not config["notify_on_leave"]:
+            logger.debug(f"Leave notifications disabled for <#{channel_id}>")
+            return
+
+        log_channel = config["log_channel"]
         if not log_channel:
             logger.error("No log channel or OWNER_USER_ID configured for leave notice")
             return
 
-        if removed is True:
+        if not config["remove_from_group_on_leave"]:
+            group_note = ""
+        elif removed is True:
             group_note = " Removed from the ping group aditya-squad."
         elif removed is False:
             group_note = " They weren't in the ping group aditya-squad."
