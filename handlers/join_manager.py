@@ -24,8 +24,21 @@ def _init_db():
                         enabled BOOLEAN NOT NULL DEFAULT TRUE,
                         log_channel TEXT,
                         questions JSONB DEFAULT '[]',
-                        ban_list JSONB DEFAULT '[]'
+                        ban_list JSONB DEFAULT '[]',
+                        notify_on_leave BOOLEAN NOT NULL DEFAULT TRUE,
+                        remove_from_group_on_leave BOOLEAN NOT NULL DEFAULT TRUE
                     )
+                """)
+                # Existing deployments predate the leave columns.
+                cur.execute("""
+                    ALTER TABLE join_manager_config
+                    ADD COLUMN IF NOT EXISTS notify_on_leave
+                        BOOLEAN NOT NULL DEFAULT TRUE
+                """)
+                cur.execute("""
+                    ALTER TABLE join_manager_config
+                    ADD COLUMN IF NOT EXISTS remove_from_group_on_leave
+                        BOOLEAN NOT NULL DEFAULT TRUE
                 """)
             conn.commit()
         finally:
@@ -44,7 +57,8 @@ def _get_config(channel_id):
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT enabled, log_channel, questions, ban_list "
+                    "SELECT enabled, log_channel, questions, ban_list, "
+                    "notify_on_leave, remove_from_group_on_leave "
                     "FROM join_manager_config WHERE channel_id = %s",
                     (channel_id,),
                 )
@@ -55,6 +69,8 @@ def _get_config(channel_id):
                         "log_channel": row[1],
                         "questions": row[2] if isinstance(row[2], list) else json.loads(row[2]),
                         "ban_list": row[3] if isinstance(row[3], list) else json.loads(row[3]),
+                        "notify_on_leave": row[4],
+                        "remove_from_group_on_leave": row[5],
                     }
         finally:
             conn.close()
@@ -72,7 +88,8 @@ def _get_all_enabled_configs():
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT channel_id, log_channel, questions, ban_list "
+                    "SELECT channel_id, log_channel, questions, ban_list, "
+                    "notify_on_leave, remove_from_group_on_leave "
                     "FROM join_manager_config WHERE enabled = TRUE"
                 )
                 rows = cur.fetchall()
@@ -83,6 +100,8 @@ def _get_all_enabled_configs():
                             "log_channel": row[1],
                             "questions": row[2] if isinstance(row[2], list) else json.loads(row[2]),
                             "ban_list": row[3] if isinstance(row[3], list) else json.loads(row[3]),
+                            "notify_on_leave": row[4],
+                            "remove_from_group_on_leave": row[5],
                         },
                     )
                     for row in rows
@@ -157,6 +176,11 @@ def register(app):
         existing_questions = (existing_config or {}).get("questions", [])
         existing_ban_list = (existing_config or {}).get("ban_list", [])
         existing_log_channel = (existing_config or {}).get("log_channel")
+        # New configs default both leave behaviours on.
+        existing_notify_on_leave = (existing_config or {}).get("notify_on_leave", True)
+        existing_remove_on_leave = (existing_config or {}).get(
+            "remove_from_group_on_leave", True
+        )
 
         question_blocks = []
         for i in range(1, 6):
@@ -223,6 +247,31 @@ def register(app):
         if existing_ban_list:
             ban_list_element["initial_value"] = ",".join(existing_ban_list)
 
+        leave_options = [
+            {
+                "text": {"type": "plain_text", "text": "Notify the log channel on leave"},
+                "value": "notify_on_leave",
+            },
+            {
+                "text": {"type": "plain_text", "text": "Remove from ping group on leave"},
+                "value": "remove_from_group_on_leave",
+            },
+        ]
+        initial_leave_options = [
+            opt
+            for opt, enabled in zip(
+                leave_options, (existing_notify_on_leave, existing_remove_on_leave)
+            )
+            if enabled
+        ]
+        leave_element = {
+            "type": "checkboxes",
+            "action_id": "leave_settings_input",
+            "options": leave_options,
+        }
+        if initial_leave_options:
+            leave_element["initial_options"] = initial_leave_options
+
         client.views_open(
             trigger_id=trigger_id,
             view={
@@ -249,6 +298,16 @@ def register(app):
                         "label": {
                             "type": "plain_text",
                             "text": "Log channel (optional)",
+                        },
+                    },
+                    {
+                        "type": "input",
+                        "block_id": "leave_settings",
+                        "optional": True,
+                        "element": leave_element,
+                        "label": {
+                            "type": "plain_text",
+                            "text": "When someone leaves the channel",
                         },
                     },
                     {"type": "divider"},
@@ -283,6 +342,16 @@ def register(app):
             "selected_conversation"
         )
 
+        selected_leave = {
+            opt["value"]
+            for opt in values["leave_settings"]["leave_settings_input"].get(
+                "selected_options"
+            )
+            or []
+        }
+        notify_on_leave = "notify_on_leave" in selected_leave
+        remove_from_group_on_leave = "remove_from_group_on_leave" in selected_leave
+
         questions = []
         for i in range(1, 6):
             q_val = values[f"q{i}"][f"q{i}_input"].get("value")
@@ -303,13 +372,16 @@ def register(app):
                     cur.execute("DELETE FROM join_manager_config")
                     cur.execute(
                         """INSERT INTO join_manager_config
-                               (channel_id, enabled, log_channel, questions, ban_list)
-                           VALUES (%s, TRUE, %s, %s, %s)""",
+                               (channel_id, enabled, log_channel, questions, ban_list,
+                                notify_on_leave, remove_from_group_on_leave)
+                           VALUES (%s, TRUE, %s, %s, %s, %s, %s)""",
                         (
                             channel_id,
                             log_channel,
                             json.dumps(questions),
                             json.dumps(ban_list),
+                            notify_on_leave,
+                            remove_from_group_on_leave,
                         ),
                     )
                 conn.commit()
